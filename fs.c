@@ -40,14 +40,14 @@ void calcular_geometria_disco() {
     // Calcula quantos blocos de 4KB cabem no disco
     total_blocos_disco = total_bytes_disco / TAMANHO_BLOCO;
     
-    // Cálculos de layout conforme especificação (Quantos blocos o Bitmap precisa?)
+    // Cálculos de layout (Quantos blocos o Bitmap precisa?)
     uint64_t bytes_necessarios_bitmap = (total_blocos_disco + 7) / 8; // Divisão por 8 arredondada para cima
-    uint64_t blocos_para_bitmap = (bytes_necessarios_bitmap + TAMANHO_BLOCO - 1) / TAMANHO_BLOCO;
+    uint64_t blocos_para_bitmap = (bytes_necessarios_bitmap + TAMANHO_BLOCO - 1) / TAMANHO_BLOCO; // Divisão por 4KB arredondada para cima
 
     // Define os endereços iniciais de cada área
     bloco_inicio_bitmap = 2; // Pula Boot(0) e Super(1)
-    bloco_inicio_raiz = bloco_inicio_bitmap + blocos_para_bitmap;
-    bloco_inicio_dados = bloco_inicio_raiz + 1; // Raiz ocupa fixo 1 bloco
+    bloco_inicio_raiz = bloco_inicio_bitmap + blocos_para_bitmap; // pula bitmap
+    bloco_inicio_dados = bloco_inicio_raiz + 1; // root ocupa fixo 1 bloco
 }
 
 // Manipula bits individuais no Bitmap (Marca blocos como USADO ou LIVRE)
@@ -69,7 +69,7 @@ void definir_status_blocos_bitmap(uint64_t bloco_inicial, int quantidade, int st
 
         // Passo 2: Modificar o bit específico (Modify)
         if(status == STATUS_USADO) 
-            byte_lido |= (1 << deslocamento_bit);  // Operador OR liga o bit (1)
+            byte_lido |= (1 << deslocamento_bit); // Operador OR liga o bit (1)
         else                       
             byte_lido &= ~(1 << deslocamento_bit); // Operador AND com NOT desliga o bit (0)
 
@@ -126,16 +126,17 @@ int criar_arquivo(const char *nome, uint32_t tamanho_solicitado) {
     
     // 2. Algoritmo FIRST FIT (Primeiro Encaixe)
     // Varre o disco procurando N blocos livres seguidos
-    for (uint64_t i = 0; i < total_blocos_disco - bloco_inicio_dados; i++) { 
-        uint64_t indice_absoluto = bloco_inicio_dados + i; // Pula área do sistema
+    for (uint64_t i = 0; i < total_blocos_disco - bloco_inicio_dados; i++) { // só percorre a área de dados
+        uint64_t indice_absoluto = bloco_inicio_dados + i; // garante que começa a busca no bloco correto
         
-        if (indice_absoluto >= total_blocos_disco) break;
+        if (indice_absoluto >= total_blocos_disco) break; // segurança
 
-        if(verificar_se_bloco_esta_livre(indice_absoluto)) {
+        if(verificar_se_bloco_esta_livre(indice_absoluto)) { // achar blocos contíguos
             contador_blocos_livres_consecutivos++;
             // Se achou espaço contíguo suficiente, para a busca
             if (contador_blocos_livres_consecutivos == blocos_necessarios) {
                 indice_primeiro_bloco_livre = indice_absoluto - blocos_necessarios + 1;
+                // pega o indice do primeiro bloco livre
                 break;
             }
         } else {
@@ -145,10 +146,10 @@ int criar_arquivo(const char *nome, uint32_t tamanho_solicitado) {
 
     if (indice_primeiro_bloco_livre < 0) return -ENOSPC; // Erro: Disco cheio ou fragmentado
 
-    // 3. Procura uma "gaveta" vazia no diretório para guardar os metadados
-    int indice_diretorio_livre = -1;
-    for (int i = 0; i < 64; i++) {
-        EntradaDiretorio entrada = ler_entrada_diretorio(i);
+    // 3. Procura uma gaveta vazia no diretório para guardar os metadados
+    int indice_diretorio_livre = -1; // inicia com um valor inválido
+    for (int i = 0; i < 64; i++) { // 64 entradas no diretório
+        EntradaDiretorio entrada = ler_entrada_diretorio(i); 
         // Recicla gavetas marcadas como LIVRE ou APAGADO (0xE5)
         if (entrada.status == STATUS_LIVRE || entrada.status == STATUS_APAGADO) {
             indice_diretorio_livre = i;
@@ -190,9 +191,9 @@ int remover_arquivo(const char *nome) {
         }
     }
 
-    if (indice_encontrado < 0) return -ENOENT;
+    if (indice_encontrado < 0) return -ENOENT; // No such file or directory
 
-    // Passo importante: SOFT DELETE
+    // SOFT DELETE
     // 1. Libera o Bitmap (diz que os blocos estão livres para uso futuro)
     // Mas NÃO zeramos os dados físicos (para ser rápido)
     if (entrada.tamanho_bytes > 0) {
@@ -251,7 +252,7 @@ int ler_arquivo(const char *nome, uint32_t deslocamento_inicial, uint32_t tamanh
     return 0;
 }
 
-// Lógica Complexa: Escrever com possibilidade de Expansão (Sem Goto)
+// Lógica Complexa: Escrever com possibilidade de Expansão
 int escrever_arquivo(const char *nome, uint32_t deslocamento_inicial, const void *buffer_entrada, uint32_t tamanho_escrita) { 
     EntradaDiretorio entrada;
     int indice_diretorio = -1;
@@ -277,10 +278,10 @@ int escrever_arquivo(const char *nome, uint32_t deslocamento_inicial, const void
     int quantidade_blocos_necessarios = (novo_tamanho_total + TAMANHO_BLOCO - 1) / TAMANHO_BLOCO;
     if (quantidade_blocos_necessarios == 0 && novo_tamanho_total > 0) quantidade_blocos_necessarios = 1;
 
-    // DECISÃO: O arquivo precisa crescer fisicamente?
+    // o arquivo precisa crescer fisicamente?
     if (quantidade_blocos_necessarios > quantidade_blocos_atuais) {
         
-        // Tenta Expansão Adjacente (Vizinhos livres?)
+        // Tenta Expansão Adjacente )
         int blocos_extras = quantidade_blocos_necessarios - quantidade_blocos_atuais;
         int existe_espaco_adjacente = 1;
 
@@ -298,23 +299,23 @@ int escrever_arquivo(const char *nome, uint32_t deslocamento_inicial, const void
         }
 
         if (existe_espaco_adjacente) {
-            // CENÁRIO B: Sim, vizinhos livres! Apenas "estica" o arquivo.
+            // CENÁRIO B: vizinhos livres, estica o arquivo.
             definir_status_blocos_bitmap(entrada.bloco_inicial + quantidade_blocos_atuais, blocos_extras, STATUS_USADO);
             entrada.tamanho_bytes = novo_tamanho_total;
             salvar_entrada_diretorio(indice_diretorio, &entrada);
         } 
         else {
             // CENÁRIO C: Não cabe aqui. MOVE FILE (Realocação Total).
-            // Procura um novo "buraco" no disco que caiba o arquivo INTEIRO novo.
+            // Procura um novo buraco no disco que caiba o arquivo INTEIRO novo.
             int novo_bloco_inicio = -1;
             uint64_t contagem_livres = 0;
 
-            for (uint64_t i = 0; i < total_blocos_disco - bloco_inicio_dados; i++) {
-                uint64_t bloco_candidato = bloco_inicio_dados + i;
-                if (verificar_se_bloco_esta_livre(bloco_candidato)) {
+            for (uint64_t i = 0; i < total_blocos_disco - bloco_inicio_dados; i++) { // limita a busca à area de dados
+                uint64_t bloco_candidato = bloco_inicio_dados + i; // ajusta o índice absoluto
+                if (verificar_se_bloco_esta_livre(bloco_candidato)) { 
                     contagem_livres++;
-                    if (contagem_livres == quantidade_blocos_necessarios) {
-                        novo_bloco_inicio = bloco_candidato - quantidade_blocos_necessarios + 1;
+                    if (contagem_livres == quantidade_blocos_necessarios) { 
+                        novo_bloco_inicio = bloco_candidato - quantidade_blocos_necessarios + 1; // volta pro comeco da sequencia
                         break;
                     }
                 } else {
@@ -361,27 +362,29 @@ int escrever_arquivo(const char *nome, uint32_t deslocamento_inicial, const void
     }
 
     // --- Rotina de Escrita Final (Direct Write) ---
-    // Agora que garantimos que o espaço existe (seja no mesmo lugar ou novo), gravamos os dados novos.
+    // gravae os dados novos.
     
     uint8_t *ponteiro_entrada = (uint8_t*)buffer_entrada;
     uint32_t bytes_a_escrever = tamanho_escrita;
     uint32_t posicao_escrita = deslocamento_inicial;
 
     while (bytes_a_escrever > 0) {
-        // Calcula endereço físico exato
-        uint32_t indice_relativo = posicao_escrita / TAMANHO_BLOCO;
-        uint32_t bloco_fisico_alvo = entrada.bloco_inicial + indice_relativo;
-        uint32_t deslocamento_no_bloco = posicao_escrita % TAMANHO_BLOCO;
+        uint32_t indice_relativo = posicao_escrita / TAMANHO_BLOCO; // localiza o bloco lógico
+        // divide a posicao atual pelo tamanho do bloco
+        uint32_t bloco_fisico_alvo = entrada.bloco_inicial + indice_relativo; // localiza o bloco físico alvo
+        // entrada.bloco_inicial é o bloco onde o arquivo começa no disco
+        uint32_t deslocamento_no_bloco = posicao_escrita % TAMANHO_BLOCO;  // deslocamento dentro do bloco até o ponto da escrita
         
         uint64_t endereco_disco = (uint64_t)bloco_fisico_alvo * TAMANHO_BLOCO + deslocamento_no_bloco;
+        // calcula o end absoluto no disco onde a escrita deve começar (o fseek pega bytes)
 
-        // Escreve até o fim do bloco ou até acabar os dados
+        // Escreve até o fim do bloco ou até acabar os dados (trava de segurança)
         uint32_t bytes_parcial = TAMANHO_BLOCO - deslocamento_no_bloco;
-        if (bytes_parcial > bytes_a_escrever) bytes_parcial = bytes_a_escrever;
+        if (bytes_parcial > bytes_a_escrever) bytes_parcial = bytes_a_escrever; 
 
         // Pula para o local e grava (Direct Write)
-        fseek_64(arquivo_disco, endereco_disco, SEEK_SET);
-        fwrite(ponteiro_entrada, bytes_parcial, 1, arquivo_disco);
+        fseek_64(arquivo_disco, endereco_disco, SEEK_SET); // move agulha para o byte calculado
+        fwrite(ponteiro_entrada, bytes_parcial, 1, arquivo_disco); // grava os bytes do pedaço
 
         // Atualiza ponteiros
         ponteiro_entrada += bytes_parcial;

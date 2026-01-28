@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
         if (strcmp(comando, "exit") == 0) break;
         else if (strcmp(comando, "format") == 0) comando_formatar();
         else if (strcmp(comando, "ls") == 0) comando_listar();
-        else if (strcmp(comando, "rm") == 0) {
+        else if (strcmp(comando, "remove") == 0) {
             scanf("%s", arg1);
             if(remover_arquivo(arg1) == 0) printf("Removido.\n");
             else printf("Erro.\n");

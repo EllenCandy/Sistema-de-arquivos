@@ -137,6 +137,14 @@ int main(int argc, char *argv[]) {
         printf("Disco nao formatado.\n");
     }
 
+    printf("\nComandos aceitos:\n");
+    printf("  format\n");
+    printf("  ls\n");
+    printf("  create <origem> <destino>\n");
+    printf("  export <origem> <destino>\n");
+    printf("  remove <arquivo>\n");
+    printf("  exit\n");
+
     char comando[20], arg1[100], arg2[100];
     while (1) {
         printf("\nFS> ");

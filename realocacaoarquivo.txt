@@ -1,0 +1,92 @@
+Como fazer a Realocação acontecer?
+Para ver a mágica da realocação acontecer, você precisa de uma operação de Append (Anexar). Você precisa pegar um arquivo que já existe e adicionar dados ao final dele, forçando-o a crescer além do limite do bloco atual.
+
+Vamos criar o comando anexar no main.c. Esse comando vai escrever dados após o fim do arquivo atual.
+
+1. Adicione a função comando_anexar no main.c
+C
+
+void comando_anexar() {
+    char nome[50];
+    char conteudo[1024];
+
+    printf("Arquivo existente: ");
+    scanf("%s", nome);
+    while (getchar() != '\n'); // Limpa buffer
+
+    printf("Texto para adicionar: ");
+    fgets(conteudo, sizeof(conteudo), stdin);
+    conteudo[strcspn(conteudo, "\n")] = 0; 
+    int tamanho_novo = strlen(conteudo);
+
+    // 1. Precisamos saber o tamanho ATUAL do arquivo para escrever no final
+    // Vamos fazer uma busca rápida (poderia ser uma função auxiliar)
+    EntradaDiretorio entrada;
+    int encontrado = 0;
+    for (int i = 0; i < 64; i++) {
+        entrada = ler_entrada_diretorio(i); // Nota: Use bloco_diretorio_atual se já implementou pastas
+        if (entrada.status == STATUS_USADO && strcmp(entrada.nome_arquivo, nome) == 0) {
+            encontrado = 1;
+            break;
+        }
+    }
+
+    if (!encontrado) {
+        printf("Erro: Arquivo '%s' nao existe.\n", nome);
+        return;
+    }
+
+    // 2. Chama a escrita passando o deslocamento = tamanho atual
+    // Isso força o sistema a tentar expandir o arquivo
+    int res = escrever_arquivo(nome, entrada.tamanho_bytes, conteudo, tamanho_novo);
+
+    if (res == 0) {
+        printf("Sucesso! Novo tamanho: %d bytes.\n", entrada.tamanho_bytes + tamanho_novo);
+    } else if (res == -ENOSPC) {
+        printf("Erro: Disco cheio (sem espaco contiguo para realocar).\n");
+    } else {
+        printf("Erro desconhecido (%d).\n", res);
+    }
+}
+2. Registre no menu do main
+C
+
+else if (strcmp(comando, "anexar") == 0) {
+    comando_anexar();
+}
+O Teste de Fogo (Como forçar a Realocação)
+Agora vamos criar um cenário onde a Expansão Adjacente (Cenário B) falha e o sistema é obrigado a fazer a Realocação Total (Cenário C).
+
+Imagine o disco assim (cada [ ] é um bloco de 4KB):
+
+Crie o Arquivo A (pequeno): Ocupa o Bloco 10.
+
+Crie o Arquivo B (barreira): Ocupa o Bloco 11.
+
+Agora o Arquivo A está "preso". Ele não tem vizinho livre.
+
+Anexe dados ao Arquivo A: Faça ele precisar de 2 blocos.
+
+Roteiro de Teste no Terminal:
+
+Plaintext
+
+FS> formatar
+(digite 100 setores)
+
+FS> escrever
+Nome: arquivoA.txt
+Conteudo: Eu ocupo o bloco 10.
+(O sistema aloca 1 bloco para ele)
+
+FS> escrever
+Nome: arquivoB.txt
+Conteudo: Eu sou a barreira no bloco 11.
+(O sistema aloca o próximo bloco livre, colado no A)
+
+FS> ls
+(Verifique: arquivoA no bloco X, arquivoB no bloco X+1)
+
+FS> anexar
+Arquivo: arquivoA.txt
+Conteudo: Agora eu vou crescer muito e vou precisar de mais espaco do que cabe num bloco s

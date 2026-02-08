@@ -1,0 +1,95 @@
+Adicionando o comando escrever
+No seu arquivo main.c, adicione esta função antes do main:
+
+C
+
+void comando_escrever() {
+    char nome[50];
+    char conteudo[1024]; // Buffer para texto pequeno
+
+    printf("Nome do arquivo: ");
+    scanf("%s", nome);
+
+    // Limpa o buffer do teclado para ler a frase inteira
+    while (getchar() != '\n'); 
+
+    printf("Digite o conteudo (texto curto): ");
+    // Lê a linha inteira até o enter
+    fgets(conteudo, sizeof(conteudo), stdin);
+    
+    // Remove o \n do final da string
+    conteudo[strcspn(conteudo, "\n")] = 0; 
+    
+    int tamanho = strlen(conteudo);
+
+    // 1. Cria o arquivo vazio no disco
+    if (criar_arquivo(nome, tamanho, TIPO_ARQUIVO) != 0) {
+        printf("Erro: Falha ao criar (Disco cheio ou nome existe).\n");
+        return;
+    }
+
+    // 2. Escreve o texto que você digitou dentro dos blocos alocados
+    escrever_arquivo(nome, 0, conteudo, tamanho);
+    
+    printf("Arquivo '%s' salvo com sucesso (%d bytes).\n", nome, tamanho);
+}
+Atualizando o menu no main
+Agora, vá até o loop while(1) dentro da função main e adicione a chamada:
+
+C
+
+// ... outros if/else ...
+else if (strcmp(comando, "crpasta") == 0) {
+    scanf("%s", arg1);
+    comando_crpasta(arg1);
+}
+// NOVA LINHA AQUI:
+else if (strcmp(comando, "escrever") == 0) {
+    comando_escrever();
+}
+// ...
+O que vai acontecer agora?
+Com essa alteração, o fluxo muda:
+
+Você digita escrever.
+
+O sistema pede o nome (notas.txt).
+
+O sistema pede o texto (Ola mundo, este arquivo nasceu aqui dentro!).
+
+O fs.c aloca blocos novos, marca o bitmap e grava essa string direto nos bytes do disco virtual, sem passar pelo seu Windows/Linux.
+
+Quer ir além? (Comando cat)
+Já que agora você pode criar texto lá dentro, seria legal ler esse texto sem precisar exportar para o PC, certo? O comando cat (concatenar/exibir) faz isso.
+
+Adicione no main.c:
+
+C
+
+void comando_cat(const char *nome) {
+    // 1. Descobre o tamanho do arquivo lendo a entrada do diretório
+    // (Precisaria de uma função auxiliar 'buscar_tamanho', 
+    // mas vamos simplificar tentando ler um bloco)
+    
+    char buffer[TAMANHO_BLOCO + 1]; // +1 para o \0 final de string
+    memset(buffer, 0, sizeof(buffer));
+
+    // Tenta ler o primeiro bloco do arquivo
+    int res = ler_arquivo(nome, 0, TAMANHO_BLOCO, buffer);
+    
+    if (res == 0) {
+        printf("\n--- Conteudo de %s ---\n", nome);
+        printf("%s\n", buffer); // Assume que é texto
+        printf("----------------------\n");
+    } else {
+        printf("Erro ao ler arquivo (Nao existe ou vazio).\n");
+    }
+}
+E no main:
+
+C
+
+else if (strcmp(comando, "cat") == 0) {
+    scanf("%s", arg1);
+    comando_cat(arg1);
+}
